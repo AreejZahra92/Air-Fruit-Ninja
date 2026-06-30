@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Fruit Ninja</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050507;
+            color: #ffffff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #hud {
+            position: absolute;
+            top: 18px;
+            left: 18px;
+            z-index: 10;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .hud-pill {
+            background: rgba(20, 20, 25, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 10px 18px;
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+        }
+
+        #score-pill { color: #ffd84d; }
+        #best-pill { color: #7fd8ff; }
+        #best-pill.new-best {
+            animation: bestPulse 0.6s ease;
+        }
+        @keyframes bestPulse {
+            0% { transform: scale(1); }
+            30% { transform: scale(1.25); box-shadow: 0 0 18px #7fd8ff; }
+            100% { transform: scale(1); }
+        }
+        #lives-pill { color: #ff5577; letter-spacing: 2px; }
+        #combo-pill {
+            color: #4dffd0;
+            opacity: 0;
+            transition: opacity 0.2s, transform 0.2s;
+            transform: scale(0.8);
+        }
+        #combo-pill.show {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        #status-badge {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            z-index: 10;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: #444;
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas, video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        video {
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        #gameCanvas {
+            z-index: 2;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background: rgba(5,5,7,0.78);
+            transition: opacity 0.3s;
+        }
+
+        #overlay.hidden { display: none; }
+
+        #overlay h1 {
+            font-size: 52px;
+            margin: 0 0 8px 0;
+            text-shadow: 0 0 18px rgba(255, 90, 90, 0.8);
+        }
+
+        #overlay p {
+            font-size: 16px;
+            color: #ccc;
+            max-width: 420px;
+            line-height: 1.5;
+            margin: 8px 0 26px 0;
+        }
+
+        #overlay .big-score {
+            font-size: 28px;
+            color: #ffd84d;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #ff5577, #ff8a3d);
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            padding: 14px 38px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(255, 85, 119, 0.4);
+            transition: transform 0.15s;
+        }
+        #startBtn:hover { transform: translateY(-2px) scale(1.03); }
+        #startBtn:active { transform: translateY(0) scale(1); }
+
+        #instructions {
+            position: absolute;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            font-size: 12px;
+            color: rgba(255,255,255,0.55);
+            text-align: center;
+        }
+
+        #newBestToast {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-10px);
+            z-index: 15;
+            background: linear-gradient(135deg, #7fd8ff, #4dffd0);
+            color: #00332e;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 8px 18px;
+            border-radius: 20px;
+            opacity: 0;
+            transition: opacity 0.25s, transform 0.25s;
+            box-shadow: 0 6px 18px rgba(127, 216, 255, 0.5);
+        }
+        #newBestToast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        #difficultySelect {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 26px;
+        }
+
+        .diff-btn {
+            background: rgba(255,255,255,0.08);
+            border: 1.5px solid rgba(255,255,255,0.25);
+            color: #fff;
+            border-radius: 10px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .diff-btn:hover { background: rgba(255,255,255,0.16); }
+        .diff-btn.selected {
+            background: linear-gradient(135deg, #ff5577, #ff8a3d);
+            border-color: transparent;
+            box-shadow: 0 4px 14px rgba(255, 85, 119, 0.4);
+        }
+
+        #pauseOverlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 18;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(5,5,7,0.7);
+            text-align: center;
+        }
+        #pauseOverlay.show { display: flex; }
+        #pauseOverlay h2 {
+            font-size: 36px;
+            margin: 0 0 8px 0;
+        }
+        #pauseOverlay p {
+            font-size: 14px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <div class="hud-pill" id="score-pill">Score: 0</div>
+        <div class="hud-pill" id="best-pill">Best: 0</div>
+        <div class="hud-pill" id="combo-pill">Combo x2!</div>
+    </div>
+
+    <div id="status-badge">Initializing Camera...</div>
+
+    <div id="newBestToast">🏆 New Best Score!</div>
+
+    <div id="canvas-container">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="instructions">Swipe your index finger through the fruit. Make a fist ✊ to pause. Avoid the bombs 💣</div>
+
+    <div id="pauseOverlay">
+        <h2>⏸️ Paused</h2>
+        <p>Open your hand and point your index finger to resume</p>
+    </div>
+
+    <div id="overlay">
+        <h1>🍉 Air Fruit Ninja</h1>
+        <p>Point your index finger at the camera and slice the fruit as it flies up. Miss 3 fruits or hit a bomb and it's game over. Combo multiple slices in one swipe for bonus points!</p>
+        <div id="difficultySelect">
+            <button class="diff-btn" data-diff="easy">Easy</button>
+            <button class="diff-btn selected" data-diff="normal">Normal</button>
+            <button class="diff-btn" data-diff="hard">Hard</button>
+        </div>
+        <button id="startBtn">Start Slicing</button>
+    </div>
+
+    <script>
+        const video = document.getElementById("webcam");
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const statusBadge = document.getElementById("status-badge");
+        const scorePill = document.getElementById("score-pill");
+        const bestPill = document.getElementById("best-pill");
+        const comboPill = document.getElementById("combo-pill");
+        const overlay = document.getElementById("overlay");
+        const startBtn = document.getElementById("startBtn");
+        const newBestToast = document.getElementById("newBestToast");
+        const difficultyButtons = document.querySelectorAll(".diff-btn");
+        const pauseOverlay = document.getElementById("pauseOverlay");
+
+        // ---------------- High Score (persisted in localStorage) ----------------
+        let bestScore = 0;
+        try {
+            bestScore = parseInt(localStorage.getItem('airFruitNinjaBest') || '0', 10) || 0;
+        } catch (err) {
+            bestScore = 0; // localStorage may be unavailable in some environments
+        }
+        bestPill.innerText = `Best: ${bestScore}`;
+
+        function saveBestScoreIfNeeded() {
+            if (score > bestScore) {
+                bestScore = score;
+                bestPill.innerText = `Best: ${bestScore}`;
+                bestPill.classList.add('new-best');
+                setTimeout(() => bestPill.classList.remove('new-best'), 600);
+                newBestToast.classList.add('show');
+                setTimeout(() => newBestToast.classList.remove('show'), 1800);
+                try {
+                    localStorage.setItem('airFruitNinjaBest', String(bestScore));
+                } catch (err) {
+                    // ignore if storage is unavailable
+                }
+                return true;
+            }
+            return false;
+        }
+
+        // ---------------- Difficulty Modes ----------------
+        const DIFFICULTY_PRESETS = {
+            easy:   { spawnInterval: 90, minSpawnInterval: 50, bombChance: 0.08 },
+            normal: { spawnInterval: 70, minSpawnInterval: 35, bombChance: 0.13 },
+            hard:   { spawnInterval: 50, minSpawnInterval: 24, bombChance: 0.20 },
+        };
+        let currentDifficulty = 'normal';
+
+        difficultyButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                difficultyButtons.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                currentDifficulty = btn.dataset.diff;
+            });
+        });
+
+        // ---------------- Sound Effects (Web Audio API, no external files needed) ----------------
+        let audioCtx = null;
+        function getAudioCtx() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioCtx;
+        }
+
+        function playWhoosh() {
+            try {
+                const ac = getAudioCtx();
+                const osc = ac.createOscillator();
+                const gain = ac.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(900, ac.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, ac.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.18, ac.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.13);
+                osc.connect(gain).connect(ac.destination);
+                osc.start();
+                osc.stop(ac.currentTime + 0.14);
+            } catch (err) { /* audio not available, fail silently */ }
+        }
+
+        function playSplat() {
+            try {
+                const ac = getAudioCtx();
+                const bufferSize = ac.sampleRate * 0.12;
+                const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+                }
+                const noise = ac.createBufferSource();
+                noise.buffer = buffer;
+                const filter = ac.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1200, ac.currentTime);
+                const gain = ac.createGain();
+                gain.gain.setValueAtTime(0.55, ac.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.13);
+                noise.connect(filter).connect(gain).connect(ac.destination);
+                noise.start();
+            } catch (err) { /* audio not available, fail silently */ }
+        }
+
+        function playBoom() {
+            try {
+                const ac = getAudioCtx();
+                const bufferSize = ac.sampleRate * 0.5;
+                const buffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.6);
+                }
+                const noise = ac.createBufferSource();
+                noise.buffer = buffer;
+                const filter = ac.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(500, ac.currentTime);
+                const gain = ac.createGain();
+                gain.gain.setValueAtTime(0.9, ac.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.5);
+                noise.connect(filter).connect(gain).connect(ac.destination);
+                noise.start();
+
+                // Low thump oscillator layered underneath for extra punch
+                const osc = ac.createOscillator();
+                const oscGain = ac.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(130, ac.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(35, ac.currentTime + 0.4);
+                oscGain.gain.setValueAtTime(0.8, ac.currentTime);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.42);
+                osc.connect(oscGain).connect(ac.destination);
+                osc.start();
+                osc.stop(ac.currentTime + 0.43);
+
+                // Sharp high-frequency "crack" for the initial explosion transient
+                const crack = ac.createOscillator();
+                const crackGain = ac.createGain();
+                crack.type = 'square';
+                crack.frequency.setValueAtTime(800, ac.currentTime);
+                crack.frequency.exponentialRampToValueAtTime(100, ac.currentTime + 0.06);
+                crackGain.gain.setValueAtTime(0.4, ac.currentTime);
+                crackGain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.07);
+                crack.connect(crackGain).connect(ac.destination);
+                crack.start();
+                crack.stop(ac.currentTime + 0.08);
+            } catch (err) { /* audio not available, fail silently */ }
+        }
+
+        // ---------------- Screen Shake ----------------
+        let shakeTime = 0;
+        let shakeIntensity = 0;
+        function triggerScreenShake(intensity = 18, duration = 22) {
+            shakeIntensity = intensity;
+            shakeTime = duration;
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ---------------- Game State ----------------
+        const GRAVITY = 0.32;
+        const FRUIT_TYPES = [
+            { name: 'watermelon', color: '#3ecb5a', flesh: '#ff5f7a', radius: 42 },
+            { name: 'orange',     color: '#ff9a2e', flesh: '#ffb347', radius: 34 },
+            { name: 'lemon',      color: '#f5e642', flesh: '#fff7c2', radius: 28 },
+            { name: 'plum',       color: '#9b4fbd', flesh: '#d9a8ef', radius: 30 },
+            { name: 'kiwi',       color: '#7fae2e', flesh: '#c8e872', radius: 26 },
+        ];
+
+        let fruits = [];       // active flying fruit/bombs
+        let halves = [];       // sliced fruit halves (decorative physics)
+        let particles = [];    // juice splatter particles
+        let slashTrail = [];   // recent fingertip positions for trail rendering & slicing
+        let score = 0;
+        let lives = 3;
+        let comboCount = 0;
+        let comboTimer = 0;
+        let gameRunning = false;
+        let spawnTimer = 0;
+        let spawnInterval = 70; // frames between spawns, decreases over time for difficulty
+        let frameCount = 0;
+        let lastHandX = null, lastHandY = null;
+        let fingerVisible = false;
+        let isPaused = false;
+
+        function resetGame() {
+            const preset = DIFFICULTY_PRESETS[currentDifficulty];
+            fruits = [];
+            halves = [];
+            particles = [];
+            slashTrail = [];
+            score = 0;
+            lives = 3;
+            comboCount = 0;
+            comboTimer = 0;
+            spawnTimer = 0;
+            spawnInterval = preset.spawnInterval;
+            frameCount = 0;
+            isPaused = false;
+            pauseOverlay.classList.remove('show');
+            updateHud();
+        }
+
+        function updateHud() {
+            scorePill.innerText = `Score: ${score}`;
+        }
+
+        function flashCombo(n) {
+            comboPill.innerText = `Combo x${n}!`;
+            comboPill.classList.add('show');
+            clearTimeout(comboPill._t);
+            comboPill._t = setTimeout(() => comboPill.classList.remove('show'), 700);
+        }
+
+        // ---------------- Spawning ----------------
+        function spawnObject() {
+            const preset = DIFFICULTY_PRESETS[currentDifficulty];
+            const isBomb = Math.random() < preset.bombChance;
+            const type = isBomb ? null : FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
+            const startX = 80 + Math.random() * (canvas.width - 160);
+            const startY = canvas.height + 50;
+
+            // Aim roughly toward the upper-middle area of the screen with some randomness,
+            // giving an upward arc that falls back down under gravity.
+            const targetX = canvas.width * (0.25 + Math.random() * 0.5);
+            const apexHeight = canvas.height * (0.18 + Math.random() * 0.32);
+
+            const dx = targetX - startX;
+            // Solve initial vy needed to reach apexHeight above startY using vy^2 = 2*g*h
+            const vy = -Math.sqrt(2 * GRAVITY * (canvas.height - apexHeight));
+            const framesToApex = Math.abs(vy / GRAVITY);
+            const vx = framesToApex > 0 ? dx / (framesToApex * 2.4) : 0;
+
+            fruits.push({
+                isBomb,
+                type,
+                x: startX,
+                y: startY,
+                vx,
+                vy,
+                radius: isBomb ? 36 : type.radius,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.12,
+                sliced: false
+            });
+        }
+
+        // ---------------- Slicing / Collision ----------------
+        function distanceToSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1, dy = y2 - y1;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+            let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            const projX = x1 + t * dx, projY = y1 + t * dy;
+            return Math.hypot(px - projX, py - projY);
+        }
+
+        let lastWhooshTime = 0;
+        function checkSlices() {
+            if (slashTrail.length < 2) return;
+
+            // Play a light whoosh on fast swipe motion, throttled to avoid spam
+            const last = slashTrail[slashTrail.length - 1];
+            const prev = slashTrail[slashTrail.length - 2];
+            const moveDist = Math.hypot(last.x - prev.x, last.y - prev.y);
+            const now = Date.now();
+            if (moveDist > 35 && now - lastWhooshTime > 180) {
+                playWhoosh();
+                lastWhooshTime = now;
+            }
+
+            let slicedThisSwipe = 0;
+
+            // Check every new trail segment since the last check, not just the
+            // most recent one — this prevents fast swipes from "skipping over"
+            // a fruit when the fingertip jumps a large distance in one frame.
+            for (let i = 1; i < slashTrail.length; i++) {
+                const p1 = slashTrail[i - 1];
+                const p2 = slashTrail[i];
+                if (p2.checked) continue;
+                p2.checked = true;
+
+                fruits.forEach(obj => {
+                    if (obj.sliced) return;
+                    const dist = distanceToSegment(obj.x, obj.y, p1.x, p1.y, p2.x, p2.y);
+                    if (dist < obj.radius + 14) {
+                        obj.sliced = true;
+                        if (obj.isBomb) {
+                            triggerBombHit(obj);
+                        } else {
+                            sliceFruit(obj);
+                            slicedThisSwipe++;
+                        }
+                    }
+                });
+            }
+
+            if (slicedThisSwipe > 0) {
+                comboCount += slicedThisSwipe;
+                comboTimer = 40;
+                if (comboCount >= 2) flashCombo(comboCount);
+            }
+        }
+
+        function sliceFruit(obj) {
+            playSplat();
+            const points = comboCount >= 1 ? 10 + comboCount * 5 : 10;
+            score += points;
+            updateHud();
+
+            // Create two halves flying apart
+            for (let side = -1; side <= 1; side += 2) {
+                halves.push({
+                    x: obj.x,
+                    y: obj.y,
+                    vx: obj.vx + side * (1.5 + Math.random()),
+                    vy: obj.vy - 1.5,
+                    rotation: obj.rotation,
+                    rotationSpeed: side * (0.08 + Math.random() * 0.08),
+                    radius: obj.radius,
+                    color: obj.type.color,
+                    flesh: obj.type.flesh,
+                    side,
+                    life: 90
+                });
+            }
+
+            // Juice particles
+            for (let i = 0; i < 14; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.5 + Math.random() * 4;
+                particles.push({
+                    x: obj.x,
+                    y: obj.y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 1,
+                    radius: 2 + Math.random() * 3,
+                    color: obj.type.flesh,
+                    life: 35 + Math.random() * 20
+                });
+            }
+        }
+
+        function triggerBombHit(obj) {
+            playBoom();
+            triggerScreenShake(20, 24);
+            // Big explosion particles
+            for (let i = 0; i < 30; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                particles.push({
+                    x: obj.x,
+                    y: obj.y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: 2 + Math.random() * 4,
+                    color: Math.random() < 0.5 ? '#ff8a3d' : '#ffd84d',
+                    life: 40 + Math.random() * 25
+                });
+            }
+            endGame();
+        }
+
+        function missFruit(obj) {
+            if (obj.isBomb) return; // missing a bomb is fine, even good
+            lives -= 1;
+            updateHud();
+            comboCount = 0;
+            if (lives <= 0) {
+                endGame();
+            }
+        }
+
+        function endGame() {
+            if (!gameRunning) return;
+            gameRunning = false;
+            const isNewBest = saveBestScoreIfNeeded();
+            overlay.classList.remove('hidden');
+            overlay.innerHTML = `
+                <h1>🍉 Game Over</h1>
+                <div class="big-score">Final Score: ${score}</div>
+                ${isNewBest ? '<div style="color:#7fd8ff;font-weight:bold;margin-bottom:18px;">🏆 New Best Score!</div>' : ''}
+                <button id="startBtn">Slice Again</button>
+            `;
+            document.getElementById('startBtn').addEventListener('click', startGame);
+        }
+
+        function startGame() {
+            resetGame();
+            overlay.classList.add('hidden');
+            gameRunning = true;
+            // Create (if needed) and unlock the audio context here, directly
+            // inside a user click handler — this is required by browser
+            // autoplay policies, otherwise sounds stay silently muted.
+            try {
+                const ac = getAudioCtx();
+                if (ac.state === 'suspended') {
+                    ac.resume();
+                }
+            } catch (err) { /* ignore — audio simply won't play in this environment */ }
+        }
+
+        startBtn.addEventListener('click', startGame);
+
+        // ---------------- Game Loop / Physics ----------------
+        function updatePhysics() {
+            frameCount++;
+
+            if (comboTimer > 0) {
+                comboTimer--;
+                if (comboTimer === 0) comboCount = 0;
+            }
+
+            // Spawn new objects, gradually increasing difficulty
+            spawnTimer++;
+            if (spawnTimer >= spawnInterval) {
+                spawnTimer = 0;
+                spawnObject();
+                const minInterval = DIFFICULTY_PRESETS[currentDifficulty].minSpawnInterval;
+                if (spawnInterval > minInterval) spawnInterval -= 0.4;
+            }
+
+            // Update flying fruit/bombs
+            fruits.forEach(obj => {
+                obj.x += obj.vx;
+                obj.y += obj.vy;
+                obj.vy += GRAVITY;
+                obj.rotation += obj.rotationSpeed;
+            });
+            // Remove fruit/bombs that fell off the bottom of the screen (penalize missed fruit)
+            fruits = fruits.filter(obj => {
+                if (obj.y > canvas.height + 100) {
+                    if (!obj.sliced) missFruit(obj);
+                    return false;
+                }
+                return true;
+            });
+            // Drop sliced objects immediately — their halves take over visually
+            fruits = fruits.filter(obj => !obj.sliced);
+
+            // Update halves
+            halves.forEach(h => {
+                h.x += h.vx;
+                h.y += h.vy;
+                h.vy += GRAVITY;
+                h.rotation += h.rotationSpeed;
+                h.life--;
+            });
+            halves = halves.filter(h => h.life > 0 && h.y < canvas.height + 150);
+
+            // Update particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += GRAVITY * 0.5;
+                p.life--;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            // Fade slash trail
+            slashTrail = slashTrail.filter(p => Date.now() - p.t < 160);
+
+            // Decay screen shake
+            if (shakeTime > 0) shakeTime--;
+        }
+
+        // ---------------- Rendering ----------------
+        function drawFruitShape(obj) {
+            ctx.save();
+            ctx.translate(obj.x, obj.y);
+            ctx.rotate(obj.rotation);
+
+            if (obj.isBomb) {
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#ff3300';
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.arc(0, 0, obj.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#ff5533';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(0, 0, obj.radius * 0.7, 0, Math.PI * 2);
+                ctx.stroke();
+                // fuse
+                ctx.strokeStyle = '#ffaa00';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(0, -obj.radius);
+                ctx.lineTo(6, -obj.radius - 12);
+                ctx.stroke();
+                ctx.fillStyle = '#ffcc33';
+                ctx.beginPath();
+                ctx.arc(6, -obj.radius - 14, 4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = obj.type.color;
+                ctx.fillStyle = obj.type.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, obj.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                // simple highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                ctx.beginPath();
+                ctx.arc(-obj.radius * 0.3, -obj.radius * 0.3, obj.radius * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function drawHalf(h) {
+            ctx.save();
+            ctx.translate(h.x, h.y);
+            ctx.rotate(h.rotation);
+            ctx.beginPath();
+            // Half-circle shape, split direction depends on `side`
+            if (h.side < 0) {
+                ctx.arc(0, 0, h.radius, Math.PI * 0.5, Math.PI * 1.5);
+            } else {
+                ctx.arc(0, 0, h.radius, -Math.PI * 0.5, Math.PI * 0.5);
+            }
+            ctx.closePath();
+            ctx.fillStyle = h.color;
+            ctx.fill();
+            // flesh edge
+            ctx.beginPath();
+            ctx.moveTo(0, -h.radius);
+            ctx.lineTo(0, h.radius);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = h.flesh;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawParticle(p) {
+            ctx.globalAlpha = Math.max(0, p.life / 40);
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        function drawSlashTrail() {
+            if (slashTrail.length < 2) return;
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            for (let i = 1; i < slashTrail.length; i++) {
+                const p1 = slashTrail[i - 1];
+                const p2 = slashTrail[i];
+                const age = Date.now() - p2.t;
+                const alpha = Math.max(0, 1 - age / 160);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.shadowBlur = 16;
+                ctx.shadowColor = '#7fd8ff';
+                ctx.lineWidth = 5 * alpha + 1;
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawFingerCursor() {
+            if (!fingerVisible || lastHandX === null) return;
+            ctx.save();
+            ctx.fillStyle = '#7fd8ff';
+            ctx.shadowBlur = 14;
+            ctx.shadowColor = '#7fd8ff';
+            ctx.beginPath();
+            ctx.arc(lastHandX, lastHandY, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function render() {
+            ctx.save();
+            if (shakeTime > 0) {
+                const falloff = shakeTime / 24;
+                const dx = (Math.random() - 0.5) * shakeIntensity * falloff;
+                const dy = (Math.random() - 0.5) * shakeIntensity * falloff;
+                ctx.translate(dx, dy);
+            }
+            ctx.clearRect(-30, -30, canvas.width + 60, canvas.height + 60);
+            particles.forEach(drawParticle);
+            halves.forEach(drawHalf);
+            fruits.forEach(drawFruitShape);
+            drawSlashTrail();
+            drawFingerCursor();
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            if (gameRunning && !isPaused) {
+                updatePhysics();
+                checkSlices();
+            }
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
+
+        // ---------------- Hand Tracking ----------------
+        function getDistance(pt1, pt2) {
+            return Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y);
+        }
+
+        // Smoothing for the fingertip cursor (EMA filter) so the slash trail
+        // doesn't jitter and break up — same technique used in AirDrawer.
+        let smoothedX = null;
+        let smoothedY = null;
+        const SMOOTHING_FACTOR = 0.65; // high = very snappy response for fast slicing
+
+        // More forgiving extension check: combines a relaxed distance ratio
+        // (was previously a strict 1.0x cutoff) with a check that the fingertip
+        // is meaningfully further from the palm than the middle knuckle, using
+        // landmarks that are more robust to hand rotation/angle than a single
+        // wrist-distance comparison.
+        function isPointerGesture(landmarks) {
+            const wrist = landmarks[0];
+            const indexMcp = landmarks[5];   // index knuckle (base)
+            const indexPip = landmarks[6];   // index middle joint
+            const indexTip = landmarks[8];   // index fingertip
+
+            const tipToWrist = getDistance(indexTip, wrist);
+            const mcpToWrist = getDistance(indexMcp, wrist);
+            const tipToPip = getDistance(indexTip, indexPip);
+            const mcpToPip = getDistance(indexMcp, indexPip);
+
+            // Relaxed ratio (0.78 instead of requiring a full 1.0x) so a slightly
+            // bent or angled finger still registers as "extended" almost immediately.
+            const ratioCheck = tipToWrist > mcpToWrist * 0.78;
+            // Secondary check: tip should be further from the pip joint than the
+            // mcp-to-pip segment length, confirming the finger is actually straight
+            // rather than curled back near the palm.
+            const straightnessCheck = tipToPip > mcpToPip * 0.5;
+
+            return ratioCheck && straightnessCheck;
+        }
+
+        // Closed fist detection (all four fingers curled in) for the pause gesture.
+        function isFistGesture(landmarks) {
+            const wrist = landmarks[0];
+            const tips = [8, 12, 16, 20];   // index, middle, ring, pinky tips
+            const mcps = [5, 9, 13, 17];    // their respective knuckle bases
+
+            let curledCount = 0;
+            for (let i = 0; i < tips.length; i++) {
+                const tipDist = getDistance(landmarks[tips[i]], wrist);
+                const mcpDist = getDistance(landmarks[mcps[i]], wrist);
+                if (tipDist < mcpDist * 1.05) curledCount++;
+            }
+            // Require at least 3 of 4 fingers curled to count as a fist —
+            // forgiving enough to trigger reliably without being too strict.
+            return curledCount >= 3;
+        }
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const handLandmarks = results.multiHandLandmarks[0];
+                const indexTip = handLandmarks[8];
+                const rawX = indexTip.x * canvas.width;
+                const rawY = indexTip.y * canvas.height;
+
+                // Smooth the coordinates so the cursor/trail is fluid, not jumpy
+                if (smoothedX === null || smoothedY === null) {
+                    smoothedX = rawX;
+                    smoothedY = rawY;
+                } else {
+                    smoothedX = smoothedX + SMOOTHING_FACTOR * (rawX - smoothedX);
+                    smoothedY = smoothedY + SMOOTHING_FACTOR * (rawY - smoothedY);
+                }
+
+                // Respond instantly — no frame-delay buffer, so raising your
+                // finger registers as fast as the camera can see it.
+                fingerVisible = isPointerGesture(handLandmarks);
+
+                // Pause/resume on fist gesture while a game is actively running
+                if (gameRunning) {
+                    const fistNow = isFistGesture(handLandmarks);
+                    if (fistNow && !isPaused) {
+                        isPaused = true;
+                        pauseOverlay.classList.add('show');
+                    } else if (!fistNow && isPaused && fingerVisible) {
+                        // Resume specifically when the index finger re-extends,
+                        // so an open palm alone doesn't accidentally unpause.
+                        isPaused = false;
+                        pauseOverlay.classList.remove('show');
+                    }
+                }
+
+                lastHandX = smoothedX;
+                lastHandY = smoothedY;
+
+                statusBadge.innerText = fingerVisible ? 'Slicing Ready' : 'Hand Detected';
+                statusBadge.style.background = fingerVisible ? '#4dffd0' : '#444';
+                statusBadge.style.color = fingerVisible ? '#000' : '#fff';
+
+                if (fingerVisible && gameRunning && !isPaused) {
+                    slashTrail.push({ x: smoothedX, y: smoothedY, t: Date.now() });
+                    if (slashTrail.length > 14) slashTrail.shift();
+                } else {
+                    // Reset smoothing anchor when not actively slicing so the
+                    // cursor doesn't "jump" from a stale position next time
+                    // the finger re-extends.
+                    if (!fingerVisible) {
+                        smoothedX = null;
+                        smoothedY = null;
+                    }
+                }
+            } else {
+                fingerVisible = false;
+                smoothedX = null;
+                smoothedY = null;
+                statusBadge.innerText = "No Hand Detected";
+                statusBadge.style.background = '#444';
+                statusBadge.style.color = '#fff';
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(video, {
+            onFrame: async () => {
+                await hands.send({ image: video });
+            },
+            width: 1280,
+            height: 720
+        });
+
+        camera.start().then(() => {
+            statusBadge.innerText = "Ready";
+        });
+    </script>
+</body>
+</html>
