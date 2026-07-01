@@ -2,7 +2,7 @@
 
 A browser-based hand-gesture game where you slice flying fruit in mid-air using just your index finger and a webcam — no mouse, no keyboard, no controller needed. Built entirely with vanilla JavaScript and Google's MediaPipe Hands for real-time hand tracking.
 
-🔗 Play it Live: https://areejzahra92.github.io/Air-Fruit-Ninja/
+🔗 [Play it Live](https://areejzahra92.github.io/Air-Fruit-Ninja/)
 
 ---
 
